@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pyo
+*.pyd
+*.env
+.env
+.env.*
+*.sqlite3
+*.db
+*.log
+*.pot
+*.mo
+*.swp
+.DS_Store
+# VSCode
+.vscode/
+# Jupyter
+.ipynb_checkpoints/
+# macOS
+.DS_Store
+# Windows
+Thumbs.db
+# Node
+node_modules/
+# Build
+build/
+dist/
+# Database
+backend/database/local_db.json
+# Compiled
+*.so
+*.dll
+*.exe
+# Test
+htmlcov/
+.coverage
+.tox/
+# Others
+*.bak
+*.tmp
+*.old
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/build/

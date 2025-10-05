@@ -26,7 +26,7 @@ const Layout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex flex-col min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4">
@@ -42,7 +42,7 @@ const Layout: React.FC = () => {
                 </p>
               </div>
             </div>
-            
+
             {/* Mobile Menu Button */}
             <Button
               variant="ghost"
@@ -56,7 +56,7 @@ const Layout: React.FC = () => {
                 <Menu className="w-5 h-5" />
               )}
             </Button>
-            
+
             {/* Session Info */}
             <div className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
@@ -67,9 +67,9 @@ const Layout: React.FC = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
+      <main className="container mx-auto px-4 py-6 flex-1 overflow-auto">
         {/* Desktop Layout */}
-        <div className="hidden lg:grid lg:grid-cols-12 gap-6 h-[calc(100vh-140px)]">
+        <div className="hidden lg:grid lg:grid-cols-12 gap-6">
           {/* Left Side - Chatbot */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
@@ -94,9 +94,9 @@ const Layout: React.FC = () => {
             <div className="flex-1">
               <FormSection sessionId={sessionId} />
             </div>
-            
+
             {/* Summary Panel */}
-            <div className="h-80">
+            <div className="min-h-[20rem]">
               <SummaryPanel sessionId={sessionId} />
             </div>
           </motion.div>
@@ -144,7 +144,7 @@ const Layout: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
-            className="h-[calc(100vh-220px)]"
+            className="min-h-[calc(100vh-220px)]"
           >
             {!isMobileMenuOpen ? (
               <Chatbot 
@@ -152,11 +152,11 @@ const Layout: React.FC = () => {
                 onSessionUpdate={handleSessionUpdate}
               />
             ) : (
-              <div className="flex flex-col gap-4 h-full">
+              <div className="flex flex-col gap-4">
                 <div className="flex-1">
                   <FormSection sessionId={sessionId} />
                 </div>
-                <div className="h-64">
+                <div className="min-h-[16rem]">
                   <SummaryPanel sessionId={sessionId} />
                 </div>
               </div>

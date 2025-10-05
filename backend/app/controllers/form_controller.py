@@ -104,36 +104,16 @@ class FormController:
     
     def _validate_form_data(self, form_data: FormData):
         """Validate form data"""
-        # Check if at least one field is provided
-        has_data = any([
-            form_data.name,
-            form_data.email,
-            form_data.phone,
-            form_data.address,
-            form_data.notes,
-            form_data.additional_fields
-        ])
+        # Validate phone formats if provided
+        if form_data.child.phone1:
+            if not self._is_valid_phone(form_data.child.phone1):
+                raise ValidationException("Invalid format for Phone #1")
         
-        if not has_data:
-            raise ValidationException("At least one field must be provided in form data")
-        
-        # Validate email format if provided
-        if form_data.email:
-            if not self._is_valid_email(form_data.email):
-                raise ValidationException("Invalid email format")
-        
-        # Validate phone format if provided
-        if form_data.phone:
-            if not self._is_valid_phone(form_data.phone):
-                raise ValidationException("Invalid phone format")
+        if form_data.child.phone2:
+            if not self._is_valid_phone(form_data.child.phone2):
+                raise ValidationException("Invalid format for Phone #2")
         
         logger.info("Form data validation passed")
-    
-    def _is_valid_email(self, email: str) -> bool:
-        """Basic email validation"""
-        import re
-        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        return re.match(pattern, email) is not None
     
     def _is_valid_phone(self, phone: str) -> bool:
         """Basic phone validation - allows various formats"""

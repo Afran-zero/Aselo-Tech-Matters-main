@@ -1,16 +1,31 @@
 import uuid
 from datetime import datetime
 from typing import List
-# Add to your existing imports
-from ..models.form_model import FormData, FormSubmissionRequest
-from ..controllers.form_controller import form_controller
-from ..models.conversation_model import (
-    ChatRequest, ChatResponse, ChatMessage, 
-    AutoFillRequest, AutoFillResponse,
-    SummaryRequest, SummaryResponse
+
+# Models
+from ..models.form_model import (
+    FormData,
+    FormSubmissionRequest,
+    Child,
+    Category,
+    Summary
 )
+from ..models.conversation_model import (
+    ChatRequest,
+    ChatResponse,
+    ChatMessage,
+    AutoFillRequest,
+    AutoFillResponse,
+    SummaryRequest,
+    SummaryResponse
+)
+
+# Services & Controllers
 from ..services.db_service import db_service
 from ..services.llm_service import llm_service
+from ..controllers.form_controller import form_controller
+
+# Utils
 from ..utils.error_handler import SessionNotFoundException, LLMException, DatabaseException
 from ..utils.logger import get_logger
 
@@ -72,7 +87,7 @@ class ChatController:
             raise DatabaseException(f"Failed to process chat message: {str(e)}")
     
     async def extract_form_data(self, request: AutoFillRequest) -> AutoFillResponse:
-        """Extract structured form data from conversation and save to form database"""
+        """Extract structured form data from conversation"""
         try:
             # Get conversation history
             conversation = await db_service.get_conversation(request.sessionId)
@@ -83,10 +98,10 @@ class ChatController:
             # Extract form data using LLM
             form_data = await llm_service.extract_form_data(conversation.messages)
             
-            # SAVE TO FORM DATABASE - NEW CODE
-            await self._save_extracted_form_data(request.sessionId, form_data)
+            # Optional: Save to form DB (comment out if not desired)
+            # await self._save_extracted_form_data(request.sessionId, form_data)
             
-            logger.info(f"Extracted and saved form data for session: {request.sessionId}")
+            logger.info(f"Extracted form data for session: {request.sessionId}")
             
             return form_data
             
@@ -104,31 +119,46 @@ class ChatController:
             raise DatabaseException(f"Failed to extract form data: {str(e)}")
 
     async def _save_extracted_form_data(self, session_id: str, form_data: AutoFillResponse):
-        """Save extracted form data to form database"""
+        """Save extracted form data to form database (optional helper)"""
         try:
-            # Convert AutoFillResponse to FormData
-            from ..models.form_model import FormData, FormSubmissionRequest
-            
-            form_data_obj = FormData(
-                name=form_data.name,
-                email=form_data.email,
-                phone=form_data.phone,
-                address=form_data.address,
-                notes=form_data.notes
+            # Build Child object
+            child = Child(
+                firstName=form_data.firstName or "Unknown",
+                lastName=form_data.lastName,
+                gender=form_data.gender,
+                age=form_data.age,
+                streetAddress=form_data.streetAddress,
+                parish=form_data.parish,
+                phone1=form_data.phone1,
+                phone2=form_data.phone2,
+                nationality=form_data.nationality,
+                schoolName=form_data.schoolName,
+                gradeLevel=form_data.gradeLevel,
+                livingSituation=form_data.livingSituation,
+                vulnerableGroups=form_data.vulnerableGroups,
+                region=form_data.region
             )
-            
-            # Create form submission request
+
+            # Create minimal FormData
+            form_data_obj = FormData(
+                child=child,
+                category=Category(),  # empty for now
+                summary=Summary(
+                    callSummary="Auto-filled from conversation",
+                    keepConfidential=True
+                )
+            )
+
             form_request = FormSubmissionRequest(
                 sessionId=session_id,
                 formData=form_data_obj
             )
-            
-            # Save to form database
+
             await form_controller.submit_form(form_request)
-            
+
         except Exception as e:
             logger.warning(f"Failed to save extracted form data for session {session_id}: {str(e)}")
-            # Don't re-raise, we still want to return the extracted data even if save fails
+            # Do not re-raise — extraction should succeed even if save fails
     
     async def generate_summary(self, request: SummaryRequest) -> SummaryResponse:
         """Generate conversation summary"""
@@ -177,5 +207,5 @@ class ChatController:
             raise DatabaseException(f"Failed to get conversation history: {str(e)}")
 
 
-# Global chat controller instance
+# Global instance
 chat_controller = ChatController()

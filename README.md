@@ -33,33 +33,40 @@ A modern, responsive React frontend for customer support conversations with inte
 
 ```
 frontend/
+├── COMPONENTS.md
+├── package.json
+├── postcss.config.js
+├── QUICK_START.md
+├── tailwind.config.js
+├── tsconfig.json
 ├── public/
 │   ├── index.html
 │   └── manifest.json
 ├── src/
+│   ├── App.tsx
+│   ├── index.css
+│   ├── index.tsx
 │   ├── components/
-│   │   ├── ui/              # shadcn/ui components
+│   │   ├── Chatbot.tsx
+│   │   ├── Layout.tsx
+│   │   ├── forms/
+│   │   │   ├── category_form.tsx
+│   │   │   ├── child_form.tsx
+│   │   │   ├── FormSection.tsx
+│   │   │   └── summary_form.tsx
+│   │   ├── ui/
 │   │   │   ├── button.tsx
 │   │   │   ├── card.tsx
+│   │   │   ├── checkbox.tsx
 │   │   │   ├── input.tsx
 │   │   │   ├── label.tsx
 │   │   │   ├── scroll-area.tsx
+│   │   │   ├── select.tsx
 │   │   │   └── textarea.tsx
-│   │   ├── Chatbot.tsx      # Chat interface component
-│   │   ├── FormSection.tsx  # Form with auto-fill functionality
-│   │   ├── Layout.tsx       # Main layout component
-│   │   └── SummaryPanel.tsx # Conversation summary display
 │   ├── lib/
-│   │   └── utils.ts         # Utility functions
+│   │   └── utils.ts
 │   ├── services/
-│   │   └── api.ts           # API service layer
-│   ├── App.tsx              # Main app component
-│   ├── index.tsx            # React entry point
-│   └── index.css            # Global styles and theme
-├── package.json
-├── tailwind.config.js
-├── tsconfig.json
-└── postcss.config.js
+│   │   └── api.ts
 ```
 
 ## Component Architecture

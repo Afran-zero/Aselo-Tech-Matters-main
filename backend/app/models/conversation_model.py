@@ -112,7 +112,13 @@ class AutoFillResponse(BaseModel):
     suggested_categories: Optional[Dict[str, List[str]]] = Field(
         None,
         description="Suggested categories and subcategories (keys match Category field names)"
+        
     )
+    summary: Optional[Dict[str, Any]] = Field(
+    None,
+    description="Auto-generated summary information (call summary, locationOfIssue, etc.)"
+)
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata extracted")
 
 
 class SummaryRequest(BaseModel):

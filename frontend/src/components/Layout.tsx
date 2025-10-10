@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { MessageSquare, FileText, Menu, X } from 'lucide-react';
 import Chatbot from './Chatbot';
-import FormSection from './FormSection';
-import SummaryPanel from './SummaryPanel';
+import FormSection from './forms/FormSection';
 import { Button } from './ui/button';
 import { apiService } from '../services/api';
 
@@ -83,7 +82,7 @@ const Layout: React.FC = () => {
             />
           </motion.div>
 
-          {/* Right Side - Form and Summary */}
+          {/* Right Side - Form */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -93,11 +92,6 @@ const Layout: React.FC = () => {
             {/* Form Section */}
             <div className="flex-1">
               <FormSection sessionId={sessionId} />
-            </div>
-
-            {/* Summary Panel */}
-            <div className="min-h-[20rem]">
-              <SummaryPanel sessionId={sessionId} />
             </div>
           </motion.div>
         </div>
@@ -155,9 +149,6 @@ const Layout: React.FC = () => {
               <div className="flex flex-col gap-4">
                 <div className="flex-1">
                   <FormSection sessionId={sessionId} />
-                </div>
-                <div className="min-h-[16rem]">
-                  <SummaryPanel sessionId={sessionId} />
                 </div>
               </div>
             )}

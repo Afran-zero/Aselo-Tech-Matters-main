@@ -8,12 +8,58 @@ export interface ChatMessage {
   timestamp: Date;
 }
 
-export interface FormData {
-  name: string;
-  email: string;
-  phone: string;
-  address: string;
-  notes: string;
+// Import types from your form components
+export interface ChildData {
+  firstName: string;
+  lastName?: string;
+  gender?: 'Male' | 'Female' | 'Other' | 'Unknown';
+  age?: string;
+  streetAddress?: string;
+  parish?: string;
+  phone1?: string;
+  phone2?: string;
+  nationality?: string;
+  schoolName?: string;
+  gradeLevel?: string;
+  livingSituation?: string;
+  vulnerableGroups?: string[];
+  region?: string;
+}
+
+export interface CategoryData {
+  missing_children?: string[];
+  violence?: string[];
+  trafficking?: string[];
+  mental_health?: string[];
+  physical_health?: string[];
+  accessibility?: string[];
+  discrimination_and_exclusion?: string[];
+  family_relationships?: string[];
+  peer_relationships?: string[];
+  education_and_occupation?: string[];
+  sexuality?: string[];
+  disability?: string[];
+  non_counselling_contacts?: string[];
+}
+
+export interface SummaryData {
+  callSummary: string;
+  keepConfidential: boolean;
+  locationOfIssue?: string;
+  actionTaken?: string;
+  outcomeOfContact?: string;
+  repeatCaller?: boolean | null;
+  okForCaseWorkerToCall?: boolean | null;
+  didTheChildFeelWeSolvedTheirProblem?: boolean | null;
+  wouldTheChildRecommendUsToAFriend?: boolean | null;
+  didYouDiscussRightsWithTheChild?: boolean | null;
+}
+
+export interface FormSubmissionData {
+  child: ChildData;
+  category: CategoryData;
+  summary: SummaryData;
+  metadata?: Record<string, any>;
 }
 
 export interface ApiResponse<T> {
@@ -28,11 +74,10 @@ export interface ChatResponse {
 }
 
 export interface AutoFillResponse {
-  name?: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  notes?: string;
+  child?: Record<string, any>;
+  category?: Record<string, any>;
+  summary?: Record<string, any>;
+  metadata?: Record<string, any>;
 }
 
 export interface SummaryResponse {
@@ -136,12 +181,63 @@ class ApiService {
    */
   async autoFill(sessionId: string): Promise<AutoFillResponse> {
     try {
-      const response: AxiosResponse<ApiResponse<AutoFillResponse>> = await api.post('/api/autofill', {
+      const response: AxiosResponse<ApiResponse<any>> = await api.post('/api/autofill', {
         sessionId,
       });
 
+      console.log('🔍 AutoFill Response Structure:', {
+        success: response.data.success,
+        dataKeys: response.data.data ? Object.keys(response.data.data) : 'no data',
+        fullData: response.data.data
+      });
+
       if (response.data.success && response.data.data) {
-        return response.data.data;
+        const rawData = response.data.data;
+        if (rawData.summary && typeof rawData.summary === 'object') {
+                    Object.assign(rawData, rawData.summary);
+                        }
+        // Transform flat structure to nested structure
+        const transformed: AutoFillResponse = {
+          child: {},
+          category: {},
+          summary: {},
+          metadata: {}
+        };
+
+        // Define which fields belong to which section
+        const childFields = [
+          'firstName', 'lastName', 'gender', 'age', 'streetAddress', 
+          'parish', 'phone1', 'phone2', 'nationality', 'schoolName', 
+          'gradeLevel', 'livingSituation', 'vulnerableGroups', 'region'
+        ];
+
+        const summaryFields = [
+          'callSummary', 'keepConfidential', 'locationOfIssue', 
+          'actionTaken', 'outcomeOfContact', 'repeatCaller', 
+          'okForCaseWorkerToCall', 'didTheChildFeelWeSolvedTheirProblem',
+          'wouldTheChildRecommendUsToAFriend', 'didYouDiscussRightsWithTheChild'
+        ];
+        const multiSelectFields = ["locationOfIssue", "vulnerableGroups"];
+
+        // Map flat data to nested structure
+       Object.entries(rawData).forEach(([key, value]) => {
+  if (childFields.includes(key)) {
+    transformed.child![key] = value;
+  } else if (summaryFields.includes(key)) {
+    if (multiSelectFields.includes(key) && typeof value === "string") {
+      transformed.summary![key] = value.split(",").map(v => v.trim());
+    } else {
+      transformed.summary![key] = value;
+    }
+  } else if (key === "suggested_categories") {
+    transformed.category = value as Record<string, any>;
+  } else if (key !== "success" && key !== "message") {
+    transformed.metadata![key] = value;
+  }
+});
+
+        console.log('✅ Transformed Data:', transformed);
+        return transformed;
       } else {
         throw new Error(response.data.error || 'Failed to auto-fill form');
       }
@@ -157,7 +253,7 @@ class ApiService {
    * @param formData - Form data to submit
    * @returns Submission confirmation
    */
-  async submitForm(sessionId: string, formData: FormData): Promise<{ success: boolean; caseId?: string }> {
+  async submitForm(sessionId: string, formData: FormSubmissionData): Promise<{ success: boolean; caseId?: string }> {
     try {
       const response: AxiosResponse<ApiResponse<{ success: boolean; message: string; submissionId: string }>> = await api.post('/api/submitForm', {
         sessionId,

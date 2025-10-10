@@ -1,6 +1,5 @@
 import os
 import json
-import re
 from typing import List, Optional, Dict, Any
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
@@ -8,89 +7,43 @@ from app.models.conversation_model import ChatMessage, AutoFillResponse
 from app.utils.error_handler import LLMException
 from app.utils.logger import get_logger
 
-# Load environment variables
 load_dotenv()
-
 logger = get_logger(__name__)
 
 class LLMService:
-    """Service for handling LLM-based operations for child helpline conversations."""
+    """Enhanced LLM service for child helpline - pure LLM approach without regex."""
     
-    # Constants
+    # Valid enums matching frontend TypeScript types
     VALID_PARISHES = {
         "Kingston", "St. Andrew", "St. Thomas", "St. Catherine", "Clarendon", 
         "Manchester", "St. Elizabeth", "Westmoreland", "Hanover", "St. James", 
-        "Trelawny", "St. Ann", "St. Mary", "Portland"
+        "Trelawny", "St. Ann", "St. Mary", "Portland", "Unknown"
     }
+    
+    VALID_GENDERS = {"Male", "Female", "Other", "Unknown"}
+    
+    VALID_LIVING_SITUATIONS = {
+        "Alternative care", "Group residential facility", 
+        "Homeless or marginally housed", "In detention",
+        "Living independently", "With parent(s)", "With relatives", 
+        "Other", "Unknown"
+    }
+    
+    VALID_REGIONS = {"Unknown", "Cities", "Rural areas", "Town & semi-dense areas"}
     
     VALID_VULNERABLE_GROUPS = {
-        "Child in conflict with the law",
-        "Child living in conflict zone",
-        "Child living in poverty",
-        "Child member of an ethnic, racial or religious minority",
-        "Child on the move (involuntarily)",
-        "Child on the move (voluntarily)",
-        "Child with disability",
-        "LGBTQI+/SOGIESC child",
-        "Out-of-school child",
-        "Other"
-    }
-    
-    VALID_REGIONS = {"Cities", "Rural areas", "Town & semi-dense areas"}
-    
-    # Pydantic model expects these exact values
-    VALID_LIVING_SITUATIONS = {
-        "Alternative care",
-        "Group residential facility", 
-        "Homeless or marginally housed",
-        "In detention",
-        "Living independently",
-        "With parent(s)",
-        "With relatives",
-        "Other",
-        "Unknown"
-    }
-    
-    # Mapping for LLM output to Pydantic enum
-    LIVING_SITUATION_MAPPING = {
-        "with parents": "With parent(s)",
-        "with parent": "With parent(s)",
-        "lives with parents": "With parent(s)",
-        "with mother": "With parent(s)",
-        "with father": "With parent(s)",
-        "with mom": "With parent(s)",
-        "with dad": "With parent(s)",
-        "with me and my husband": "With parent(s)",
-        "with us": "With parent(s)",
-        "with relatives": "With relatives",
-        "with family": "With relatives",
-        "with aunt": "With relatives",
-        "with uncle": "With relatives",
-        "with grandparents": "With relatives",
-        "with grandmother": "With relatives",
-        "with grandfather": "With relatives",
-        "with guardian": "Alternative care",
-        "foster care": "Alternative care",
-        "in foster care": "Alternative care",
-        "group home": "Group residential facility",
-        "residential facility": "Group residential facility",
-        "institution": "Group residential facility",
-        "homeless": "Homeless or marginally housed",
-        "on the streets": "Homeless or marginally housed",
-        "detention": "In detention",
-        "jail": "In detention",
-        "alone": "Living independently",
-        "by myself": "Living independently",
-        "independently": "Living independently",
-        "other": "Other",
-        "unknown": "Unknown"
+        "Child in conflict with the law", "Child living in conflict zone",
+        "Child living in poverty", "Child member of an ethnic, racial or religious minority",
+        "Child on the move (involuntarily)", "Child on the move (voluntarily)",
+        "Child with disability", "LGBTQI+/SOGIESC child",
+        "Out-of-school child", "Other"
     }
 
     def __init__(self):
         self.api_key = os.getenv("OPENROUTER_API_KEY")
-        self.model = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-nano-9b-v2:free")
-        self.site_url = os.getenv("SITE_URL", "https://your-site-url.com")
-        self.site_name = os.getenv("SITE_NAME", "Aselo Backend")
+        self.model = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+        self.site_url = os.getenv("SITE_URL", "https://aselo-helpline.com")
+        self.site_name = os.getenv("SITE_NAME", "Aselo Child Helpline")
 
         if not self.api_key:
             logger.warning("OPENROUTER_API_KEY not set. LLM requests will fail.")
@@ -99,7 +52,7 @@ class LLMService:
             self.client = AsyncOpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=self.api_key,
-                timeout=60.0,
+                timeout=90.0,
             )
 
     async def _make_request(
@@ -107,7 +60,7 @@ class LLMService:
         messages: List[dict], 
         system_prompt: Optional[str] = None,
         temperature: float = 0.3,
-        max_tokens: int = 1500
+        max_tokens: int = 2000
     ) -> str:
         """Make a chat completion request to the LLM."""
         if not self.client:
@@ -124,10 +77,10 @@ class LLMService:
                 messages=api_messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                top_p=1,
+                top_p=0.95,
                 frequency_penalty=0,
                 presence_penalty=0,
-                timeout=30.0,
+                timeout=60.0,
                 extra_headers={
                     "HTTP-Referer": self.site_url, 
                     "X-Title": self.site_name
@@ -138,228 +91,220 @@ class LLMService:
                 raise LLMException("No response from LLM", 500, "LLM_NO_RESPONSE")
 
             response_content = completion.choices[0].message.content
-            logger.info(f"LLM response received: {len(response_content)} characters")
+            logger.info(f"LLM response: {len(response_content)} chars")
             return response_content
 
-        except LLMException:
-            raise
         except Exception as e:
             logger.error(f"LLM API error: {str(e)}", exc_info=True)
             raise LLMException(f"LLM request failed: {str(e)}", 500, "LLM_API_ERROR")
 
-    def _prepare_conversation_context(self, messages: List[ChatMessage]) -> List[dict]:
-        """Prepare messages for API format."""
-        api_messages = []
+    def _prepare_conversation_context(self, messages: List[ChatMessage]) -> str:
+        """Prepare full conversation as formatted text."""
+        lines = []
         for msg in messages:
-            role = "user" if msg.sender == "user" else "assistant"
-            api_messages.append({"role": role, "content": msg.message})
-        return api_messages
+            speaker = "COUNSELOR" if msg.sender == "assistant" else "CHILD"
+            lines.append(f"{speaker}: {msg.message}")
+        return "\n".join(lines)
 
     async def generate_chat_response(
         self, 
         messages: List[ChatMessage], 
         user_message: str
     ) -> str:
-        """Generate counselor-style chat response."""
+        """Generate empathetic counselor chat response."""
         system_prompt = (
-            "You are a compassionate, professional child helpline counselor for Aselo. "
-            "Your role is to:\n"
-            "1. Listen actively and validate the child's feelings\n"
-            "2. Gently gather information to understand their situation\n"
-            "3. Ask clear, open-ended questions one at a time\n"
-            "4. Build trust gradually—never rush or overwhelm\n"
-            "5. Focus on immediate safety, well-being, and needs\n"
-            "6. Use age-appropriate, simple language\n"
-            "7. Maintain confidentiality unless there's risk of serious harm\n"
-            "8. Never make promises you cannot keep\n"
-            "9. Be empathetic but professional\n\n"
-            "If the child expresses thoughts of self-harm or mentions abuse, "
-            "acknowledge their courage in sharing and gently ask if they are safe right now."
+            "You are a compassionate, professional child helpline counselor.\n\n"
+            "Your approach:\n"
+            "• Listen actively and validate feelings without judgment\n"
+            "• Ask open-ended questions one at a time to understand better\n"
+            "• Build trust gradually - never rush or overwhelm the child\n"
+            "• Use simple, age-appropriate language\n"
+            "• Focus on safety, well-being, and immediate needs\n"
+            "• Show empathy while maintaining professional boundaries\n"
+            "• If harm/abuse mentioned, acknowledge courage and assess safety\n"
+            "• Never make promises you cannot keep\n"
+            "• Keep responses under 3-4 sentences\n\n"
+            "Remember: Your goal is to make the child feel heard, safe, and supported."
         )
 
-        api_messages = self._prepare_conversation_context(messages)
-        api_messages.append({"role": "user", "content": user_message})
+        conversation_text = self._prepare_conversation_context(messages)
+        
+        api_messages = [
+            {"role": "user", "content": f"CONVERSATION SO FAR:\n{conversation_text}\n\nCHILD'S NEW MESSAGE:\n{user_message}"}
+        ]
 
-        try:
-            response = await self._make_request(
-                api_messages, 
-                system_prompt,
-                temperature=0.7,
-                max_tokens=500
-            )
-            return response
-        except Exception as e:
-            logger.error(f"Failed to generate chat response: {str(e)}")
-            raise LLMException(f"Failed to generate chat response: {str(e)}")
+        response = await self._make_request(
+            api_messages, 
+            system_prompt,
+            temperature=0.8,
+            max_tokens=400
+        )
+        return response.strip()
 
     def _clean_json_response(self, raw_response: str) -> str:
-        """Clean and extract JSON from LLM response."""
-        json_str = re.sub(r"^```(?:json)?\s*", "", raw_response)
-        json_str = re.sub(r"\s*```$", "", json_str).strip()
-
-        if not json_str.startswith("{"):
-            match = re.search(r"\{.*\}", json_str, re.DOTALL)
-            json_str = match.group(0) if match else "{}"
+        """Extract JSON from LLM response using pure string operations."""
+        # Remove whitespace
+        cleaned = raw_response.strip()
         
-        return json_str
+        # Find first { and last }
+        start_idx = cleaned.find('{')
+        end_idx = cleaned.rfind('}')
+        
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            json_str = cleaned[start_idx:end_idx + 1]
+            return json_str
+        
+        # If no valid JSON found, return empty object
+        return "{}"
 
-    def _normalize_living_situation(self, living_situation: Optional[str]) -> Optional[str]:
-        """Normalize living situation to match Pydantic enum values."""
-        if not living_situation:
+    def _validate_enum_field(self, value: Optional[str], valid_set: set) -> Optional[str]:
+        """Validate a field against valid enum values."""
+        if not value:
             return None
         
-        ls_lower = living_situation.lower().strip()
-        
         # Direct match
-        if living_situation in self.VALID_LIVING_SITUATIONS:
-            return living_situation
+        if value in valid_set:
+            return value
         
-        # Try exact mapping
-        if ls_lower in self.LIVING_SITUATION_MAPPING:
-            normalized = self.LIVING_SITUATION_MAPPING[ls_lower]
-            logger.info(f"Normalized living situation: '{living_situation}' -> '{normalized}'")
-            return normalized
+        # Case-insensitive match
+        value_lower = value.lower()
+        for valid in valid_set:
+            if value_lower == valid.lower():
+                return valid
         
-        # Partial match - contains key phrases
-        for key, value in self.LIVING_SITUATION_MAPPING.items():
-            if key in ls_lower:
-                logger.info(f"Normalized living situation: '{living_situation}' -> '{value}' (partial match)")
-                return value
-        
-        # Default to "Other" if we can't match
-        logger.warning(f"Could not normalize living situation: '{living_situation}', defaulting to 'Other'")
-        return "Other"
-
-    def _validate_and_clean_child_data(self, child: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate and clean child data fields."""
-        # Validate parish
-        if child.get("parish") and child["parish"] not in self.VALID_PARISHES:
-            logger.warning(f"Invalid parish: {child['parish']}")
-            child["parish"] = None
-        
-        # Validate and format age
-        age = child.get("age")
-        if age:
-            try:
-                age_num = int(str(age).strip())
-                if 0 <= age_num <= 25:
-                    child["age"] = f"{age_num:02d}"
-                else:
-                    child["age"] = None
-            except (ValueError, TypeError):
-                child["age"] = None
-        
-        # Validate vulnerable groups
-        if "vulnerableGroups" in child:
-            if isinstance(child["vulnerableGroups"], list):
-                child["vulnerableGroups"] = [
-                    vg for vg in child["vulnerableGroups"] 
-                    if vg in self.VALID_VULNERABLE_GROUPS
-                ]
-                if not child["vulnerableGroups"]:
-                    child["vulnerableGroups"] = None
-            else:
-                child["vulnerableGroups"] = None
-        
-        # Validate region
-        if child.get("region") and child["region"] not in self.VALID_REGIONS:
-            child["region"] = None
-        
-        # Normalize living situation to match Pydantic enum
-        if child.get("livingSituation"):
-            child["livingSituation"] = self._normalize_living_situation(child["livingSituation"])
-        
-        # Keep gender as-is (no validation)
-        
-        return child
-
-    def _extract_age_from_text(self, text: str) -> Optional[str]:
-        """Extract age from conversation text using regex."""
-        age_match = re.search(
-            r'\b([0-9]|1[0-9]|2[0-5])\s*(?:year(?:s)?\s*old|yo|y/o|years?)\b', 
-            text, 
-            re.IGNORECASE
-        )
-        if age_match:
-            age_num = int(age_match.group(1))
-            return f"{age_num:02d}"
         return None
 
-    def _apply_smart_defaults(self, child: Dict[str, Any], full_text: str) -> Dict[str, Any]:
-        """Apply reasonable inferences to fill missing data."""
+    def _normalize_age(self, age: Any) -> Optional[str]:
+        """Normalize age using LLM intelligence."""
+        if not age:
+            return None
+        
+        age_str = str(age).strip()
+        
+        # Let LLM handle age normalization
+        return age_str
+
+    def _validate_child_data(self, child: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate and normalize all child fields."""
+        validated = {}
+        
+        # Simple string fields
+        for field in ["firstName", "lastName", "streetAddress", "phone1", "phone2", 
+                      "nationality", "schoolName", "gradeLevel"]:
+            if field in child and child[field]:
+                validated[field] = str(child[field]).strip()
+        
+        # Enum validations
+        validated["gender"] = self._validate_enum_field(child.get("gender"), self.VALID_GENDERS)
+        validated["parish"] = self._validate_enum_field(child.get("parish"), self.VALID_PARISHES)
+        validated["livingSituation"] = self._validate_enum_field(
+            child.get("livingSituation"), self.VALID_LIVING_SITUATIONS
+        )
+        validated["region"] = self._validate_enum_field(child.get("region"), self.VALID_REGIONS)
+        
+        # Age
+        validated["age"] = self._normalize_age(child.get("age"))
+        
+        # Vulnerable groups validation
+        if "vulnerableGroups" in child and isinstance(child["vulnerableGroups"], list):
+            validated["vulnerableGroups"] = [
+                vg for vg in child["vulnerableGroups"] 
+                if vg in self.VALID_VULNERABLE_GROUPS
+            ]
+            if not validated["vulnerableGroups"]:
+                validated["vulnerableGroups"] = None
+        
+        # Remove None values
+        return {k: v for k, v in validated.items() if v is not None}
+
+    def _apply_intelligent_defaults(self, child: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply context-aware defaults based on available data."""
         # Infer nationality from Jamaican parish
         if not child.get("nationality") and child.get("parish"):
-            if child["parish"] in self.VALID_PARISHES:
+            if child["parish"] in self.VALID_PARISHES and child["parish"] != "Unknown":
                 child["nationality"] = "Jamaican"
-                logger.info("Inferred nationality 'Jamaican' from parish")
+                logger.info("Inferred nationality: Jamaican")
         
         # Infer region from parish
         if not child.get("region") and child.get("parish"):
             parish = child["parish"]
-            cities = {"Kingston", "St. Andrew"}
-            rural = {"Portland", "St. Mary", "St. Elizabeth", "Manchester", "Clarendon"}
-            
-            if parish in cities:
+            if parish in {"Kingston", "St. Andrew"}:
                 child["region"] = "Cities"
-            elif parish in rural:
+            elif parish in {"Portland", "St. Mary", "St. Elizabeth"}:
                 child["region"] = "Rural areas"
-            else:
+            elif parish in self.VALID_PARISHES and parish != "Unknown":
                 child["region"] = "Town & semi-dense areas"
-            logger.info(f"Inferred region from parish '{parish}'")
+            if child.get("region"):
+                logger.info(f"Inferred region from parish: {child['region']}")
         
         return child
+    
+
 
     async def extract_form_data(self, messages: List[ChatMessage]) -> AutoFillResponse:
-        """Extract structured form data from conversation using LLM."""
-        full_text = "\n".join(
-            f"[{msg.sender.upper()}]: {msg.message}" 
-            for msg in messages
-        )
-
+        """Extract comprehensive form data using pure LLM intelligence."""
+        conversation_text = self._prepare_conversation_context(messages)
+        
         system_prompt = self._build_extraction_prompt()
         
-        api_messages = self._prepare_conversation_context(messages)
-        api_messages.append({
-            "role": "user", 
-            "content": "Extract the structured form data as JSON. Remember: only include facts explicitly stated in the conversation."
-        })
+        api_messages = [{
+            "role": "user",
+            "content": (
+                f"CONVERSATION:\n{conversation_text}\n\n"
+                "Extract ALL information mentioned into structured JSON format. "
+                "Be thorough and extract everything stated, but never invent or assume information."
+            )
+        }]
 
         try:
             raw_response = await self._make_request(
                 api_messages, 
                 system_prompt,
                 temperature=0.1,
-                max_tokens=2000
+                max_tokens=3000
             )
-            logger.info(f"LLM extraction response length: {len(raw_response)}")
-
-            # Clean and parse JSON
+            
+            logger.info(f"Extraction raw response length: {len(raw_response)}")
+            
+            # Parse JSON
             json_str = self._clean_json_response(raw_response)
             data = json.loads(json_str)
-
-            # Extract sections
-            child = data.get("child", {})
-            summary = data.get("summary", {})
-            category = data.get("category", {})
-
-            # Validate and clean child data
-            child = self._validate_and_clean_child_data(child)
+            logger.debug(f"Raw parsed LLM JSON data:\n{json.dumps(data, indent=2)}")
             
-            # Apply smart defaults to fill missing data
-            child = self._apply_smart_defaults(child, full_text)
+            # Extract and validate sections
+            child = self._validate_child_data(data.get("child", {}))
+            child = self._apply_intelligent_defaults(child)
+            
+            # With this:
+            summary = data.get("summary", {})
+            raw_category = data.get("category", {})
 
-            # Fallback age extraction from text
-            if not child.get("age"):
-                extracted_age = self._extract_age_from_text(full_text)
-                if extracted_age:
-                    child["age"] = extracted_age
-                    logger.info(f"Age extracted via regex: {extracted_age}")
+# Normalize all expected category keys to be lists (never None)
+            CATEGORY_KEYS = [
+              "violence", "mental_health", "family_relationships",
+                 "education_and_occupation", "peer_relationships",
+                     "missing_children", "trafficking", "physical_health",
+                         "accessibility", "discrimination_and_exclusion",
+                           "sexuality", "disability", "non_counselling_contacts"
+                            ]
 
-            # Ensure keepConfidential defaults to True
+            category = {}
+            for key in CATEGORY_KEYS:
+              val = raw_category.get(key)
+              if isinstance(val, list):
+        # Keep only non-empty strings
+               category[key] = [str(item).strip() for item in val if isinstance(item, str) and item.strip()]
+              else:
+                   category[key] = []  # Default to empty list, not None
+            
+            # Ensure required fields have defaults
+            if not summary.get("callSummary"):
+                summary["callSummary"] = "Conversation in progress."
             if summary.get("keepConfidential") is None:
                 summary["keepConfidential"] = True
-
-            return AutoFillResponse(
+            
+            # Build response
+            response = AutoFillResponse(
                 firstName=child.get("firstName"),
                 lastName=child.get("lastName"),
                 gender=child.get("gender"),
@@ -374,137 +319,218 @@ class LLMService:
                 livingSituation=child.get("livingSituation"),
                 vulnerableGroups=child.get("vulnerableGroups"),
                 region=child.get("region"),
-                suggested_categories=category if isinstance(category, dict) else {}
+                suggested_categories=category if isinstance(category, dict) else {},
+                summary=summary ,
+                metadata=data.get("metadata", {})
             )
+            
+            logger.info(f"Successfully extracted form data")
+            return response
 
         except json.JSONDecodeError as e:
-            logger.error(f"JSON parsing error in extract_form_data: {e}", exc_info=True)
-            return AutoFillResponse()
+            logger.error(f"JSON parsing failed: {e}", exc_info=True)
+            return AutoFillResponse(summary={"callSummary": "Unable to auto-fill. Please enter manually."})
+
         except Exception as e:
-            logger.error(f"extract_form_data error: {e}", exc_info=True)
-            return AutoFillResponse()
+            logger.error(f"Extraction failed: {e}", exc_info=True)
+            return AutoFillResponse(summary={"callSummary": "Unable to auto-fill. Please enter manually."})
+
 
     def _build_extraction_prompt(self) -> str:
-        """Build the system prompt for data extraction."""
-        return (
-            "You are a data extraction assistant for a child helpline. "
-            "Your task is to read the FULL conversation and extract ONLY facts that are clearly and explicitly stated.\n\n"
-            
-            "CRITICAL RULES:\n"
-            "- Do NOT guess, infer, assume, or make up any information\n"
-            "- If a detail is not explicitly mentioned, use null\n"
-            "- Be conservative: when in doubt, use null\n"
-            "- Extract exact phrases where possible\n\n"
-            
-            "Return a valid JSON object with exactly these top-level keys: \"child\", \"category\", \"summary\".\n\n"
-            
-            "CHILD OBJECT:\n"
-            "- firstName, lastName: extract only if full name is clearly stated\n"
-            "- gender: extract as stated (any value is acceptable)\n"
-            "- age: extract numeric age if stated (format as two digits: '05', '14', etc.)\n"
-            f"- parish: must be one of: {', '.join(sorted(self.VALID_PARISHES))}\n"
-            "- streetAddress: full address if provided\n"
-            "- phone1, phone2: Jamaican phone numbers if shared\n"
-            "- nationality: if explicitly stated (e.g., 'Jamaican')\n"
-            "- schoolName, gradeLevel: only if explicitly named\n"
-            "- livingSituation: MUST be one of these exact values: 'With parent(s)', 'With relatives', 'Alternative care', 'Group residential facility', 'Homeless or marginally housed', 'In detention', 'Living independently', 'Other', 'Unknown'\n"
-            f"- vulnerableGroups: array of items from this exact set: {json.dumps(list(self.VALID_VULNERABLE_GROUPS))}\n"
-            f"- region: one of {', '.join(sorted(self.VALID_REGIONS))}\n\n"
-            
-            "CATEGORY OBJECT:\n"
-            "Group issues under category keys (e.g., \"Violence\", \"Mental Health\", \"Family Relationships\"). "
-            "Each value is an array of specific issue labels mentioned. If no categories discussed, return {}.\n\n"
-            
-            "SUMMARY OBJECT:\n"
-            "- callSummary: brief 1-2 sentence summary of the main issue\n"
-            "- keepConfidential: always true\n"
-            "- Other fields (repeatCaller, actionTaken, etc.): null unless explicitly stated\n\n"
-            
-            "OUTPUT REQUIREMENTS:\n"
-            "- Return ONLY valid JSON\n"
-            "- No markdown, no code blocks, no explanations\n"
-            "- Start with { and end with }\n"
-            "- Use double quotes for strings\n"
-            "- Use null (not 'null' or 'None') for missing values"
-        )
+        """Build comprehensive extraction prompt with detailed instructions."""
+        parishes_list = ', '.join(sorted(self.VALID_PARISHES))
+        genders_list = ', '.join(sorted(self.VALID_GENDERS))
+        living_situations_list = ', '.join(sorted(self.VALID_LIVING_SITUATIONS))
+        regions_list = ', '.join(sorted(self.VALID_REGIONS))
+        vulnerable_groups_list = ', '.join(sorted(list(self.VALID_VULNERABLE_GROUPS)))
+        
+        return f"""You are an expert data extraction assistant for a child helpline system in Jamaica.
+
+TASK: Extract ALL explicitly mentioned information from the conversation into structured JSON.
+
+OUTPUT FORMAT - You MUST output valid JSON with this exact structure:
+{{
+  "child": {{
+    "firstName": "string or null",
+    "lastName": "string or null",
+    "gender": "{genders_list}",
+    "age": "format as 2 digits like 01, 05, 14 OR 'Unborn' OR '>25' OR 'Unknown' OR null",
+    "streetAddress": "string or null",
+    "parish": "{parishes_list}",
+    "phone1": "string or null",
+    "phone2": "string or null",
+    "nationality": "string or null",
+    "schoolName": "string or null",
+    "gradeLevel": "string or null",
+    "livingSituation": "{living_situations_list}",
+    "vulnerableGroups": ["array of strings from valid set"],
+    "region": "{regions_list}"
+  }},
+  "category": {{
+    "violence": ["specific issues like 'Bullying in school', 'Physical maltreatment/abuse'"],
+    "mental_health": ["specific issues like 'Emotional distress - anxiety problems', 'Stress'"],
+    "family_relationships": ["specific issues like 'Family problems/disputes - conflict between parents/caregivers and child'"],
+    "education_and_occupation": ["specific issues like 'Academic issues', 'Teacher and school problems'"],
+    "peer_relationships": ["specific issues like 'Friends and friendships']
+  }},
+  "summary": {{
+    "callSummary": "Brief 2-3 sentence summary of main issue and context",
+    "keepConfidential": true,
+    "locationOfIssue": "Unknown OR Home (own) OR Home (other) OR Educational Establishment OR Institution OR Online OR Public place OR Other",
+    "actionTaken": "string describing action taken or null",
+    "outcomeOfContact": "Resolved OR Follow up by next shift OR Follow up with external entity OR null",
+    "repeatCaller": true/false/null,
+    "okForCaseWorkerToCall": true/false/null,
+    "didTheChildFeelWeSolvedTheirProblem": true/false/null,
+    "wouldTheChildRecommendUsToAFriend": true/false/null,
+    "didYouDiscussRightsWithTheChild": true/false/null
+  }},
+  "metadata": {{}}
+}}
+
+VALID VULNERABLE GROUPS:
+{vulnerable_groups_list}
+
+EXTRACTION RULES:
+1. Extract ONLY information explicitly stated in the conversation
+2. Use null for any field not clearly mentioned - DO NOT GUESS
+3. Match enum values EXACTLY (case-sensitive)
+4. For age: if mentioned as number, format as 2 digits (1 becomes "01", 5 becomes "05", 14 becomes "14")
+5. Be conservative - when uncertain, use null
+6. Categories: only include categories where specific issues are discussed
+7. CallSummary: always provide a brief factual summary of the conversation
+8. For boolean fields: use true, false, or null (not strings like "true")
+9. Parish must be exact match from valid list
+10. Living situation must be exact match from valid list
+
+CATEGORY KEYS (only include if relevant issues discussed):
+- missing_children: issues about lost, runaway, or abducted children
+- violence: bullying, abuse, neglect, maltreatment
+- trafficking: exploitation, forced labor
+- mental_health: stress, anxiety, depression, self-harm, behavioral issues
+- physical_health: medical concerns, pregnancy, nutrition, HIV/AIDS
+- accessibility: services needed (education, healthcare, legal)
+- discrimination_and_exclusion: discrimination based on any factor
+- family_relationships: family conflicts, divorce, grief, caregiver issues
+- peer_relationships: friends, classmates, partner relationships
+- education_and_occupation: school problems, learning issues, work problems
+- sexuality: sexual orientation, behaviors
+- disability: physical, intellectual, hearing, visual disabilities
+- non_counselling_contacts: questions about helpline, thank you messages
+
+AGE FORMATTING EXAMPLES:
+- If child says "I am 7" or "7 years old" -> "07"
+- If child says "I'm 14" -> "14"
+- If child says "my baby" or "not born yet" -> "Unborn"
+- If age unknown -> "Unknown"
+- If over 25 -> ">25"
+
+CRITICAL REQUIREMENTS:
+- Output ONLY valid JSON
+- No markdown formatting, no code blocks, no explanations
+- Start directly with {{ and end with }}
+- Use double quotes for strings
+- Use null (not "null" or "None") for missing values
+- Use true/false (not "true"/"false") for booleans
+- Ensure all opening braces {{ have closing braces }}
+- Ensure all opening brackets [ have closing brackets ]
+
+ANALYSIS APPROACH:
+1. Read the ENTIRE conversation carefully
+2. Identify what information is explicitly stated
+3. Match stated information to the correct fields
+4. Format according to requirements
+5. Use null for anything not explicitly mentioned
+6. Double-check JSON syntax before responding"""
 
     async def generate_summary(self, messages: List[ChatMessage]) -> str:
-        """Generate professional conversation summary."""
+        """Generate professional case summary for records."""
+        conversation_text = self._prepare_conversation_context(messages)
+        
         system_prompt = (
-            "You are a professional child helpline case worker. "
-            "Write a concise, factual, and empathetic summary of the conversation for case records.\n\n"
-            "Include:\n"
-            "- Main issue or concern raised\n"
-            "- Child's age and gender (if known)\n"
-            "- Location (if mentioned)\n"
-            "- Key risk factors or vulnerabilities\n"
-            "- Child's expressed needs or requests\n"
-            "- Any immediate safety concerns\n\n"
+            "You are a professional child helpline case worker writing case summaries.\n\n"
+            "Create a concise, factual summary including:\n"
+            "• Main issue/concern raised by the child\n"
+            "• Child's demographics (age, gender, location if known)\n"
+            "• Key vulnerabilities or risk factors identified\n"
+            "• Child's expressed needs or requests\n"
+            "• Any immediate safety concerns\n"
+            "• Actions taken or recommended by counselor\n\n"
             "Requirements:\n"
-            "- Keep it under 4 sentences\n"
-            "- Use neutral, professional language\n"
+            "- Write 3-5 sentences maximum\n"
+            "- Use professional, empathetic tone\n"
             "- State only facts from the conversation\n"
-            "- Do not include speculation or assumptions\n"
-            "- Be sensitive to the child's situation"
+            "- Do not speculate or make assumptions\n"
+            "- Maintain child's dignity and privacy\n"
+            "- Suitable for case records and handover to other staff\n"
+            "- Use third person perspective\n\n"
+            "Example format:\n"
+            "A 14-year-old female from Kingston contacted the helpline regarding bullying at school. "
+            "She reported feeling anxious and isolated. The counselor provided emotional support and "
+            "discussed coping strategies. Referral to school counselor recommended."
         )
-
-        api_messages = self._prepare_conversation_context(messages)
-        api_messages.append({
+        
+        api_messages = [{
             "role": "user",
-            "content": "Please write a professional case summary of this conversation for our records."
-        })
+            "content": f"Conversation:\n{conversation_text}\n\nWrite a professional case summary for our records."
+        }]
 
         try:
             summary = await self._make_request(
                 api_messages, 
                 system_prompt,
                 temperature=0.3,
-                max_tokens=500
+                max_tokens=600
             )
             return summary.strip()
         except Exception as e:
-            logger.error(f"Failed to generate summary: {str(e)}", exc_info=True)
-            return "Summary could not be generated due to a technical error."
-    
-    async def extract_conversation_metadata(self, messages: List[ChatMessage]) -> Dict[str, Any]:
-        """Extract metadata that can be inferred from conversation."""
-        full_text = "\n".join(f"[{msg.sender.upper()}]: {msg.message}" for msg in messages)
+            logger.error(f"Summary generation failed: {e}", exc_info=True)
+            return "Unable to generate summary. Please review conversation manually."
+
+    async def analyze_conversation_quality(self, messages: List[ChatMessage]) -> Dict[str, Any]:
+        """Analyze conversation quality and provide insights for counselor improvement."""
+        conversation_text = self._prepare_conversation_context(messages)
         
         system_prompt = (
-            "Analyze this child helpline conversation and extract metadata as JSON.\n\n"
-            "Fields to extract (use null if not present):\n"
-            "- locationOfIssue: where issue occurs ('At school', 'At home', 'Online', 'In the community', 'Other')\n"
-            "- actionTaken: what counselor did ('Provided emotional support', 'Made referral', 'Gave advice', 'Active listening', 'Escalated to protection services')\n"
-            "- outcomeOfContact: how call ended ('Issue resolved', 'Referral made', 'Follow-up needed', 'Child felt heard', 'Call disconnected')\n"
-            "- howDidYouKnowAboutOurLine: how they found helpline ('School', 'Friend', 'Social media', 'Internet search', 'Advertisement', 'Other')\n"
-            "- okForCaseWorkerToCall: true/false/null - did child give permission for follow-up call?\n"
-            "- didTheChildFeelWeSolvedTheirProblem: true/false/null - did child express satisfaction or problem resolution?\n"
-            "- wouldTheChildRecommendUsToAFriend: true/false/null - did child express they would recommend service?\n"
-            "- didYouDiscussRightsWithTheChild: true/false - did counselor discuss children's rights?\n\n"
-            "RULES:\n"
-            "- Analyze the ENTIRE conversation carefully\n"
-            "- Use null if information not clearly present\n"
-            "- For boolean fields, use true/false/null (not strings)\n"
-            "- Infer reasonably from conversation context\n"
-            "- Output ONLY valid JSON, no markdown or explanations"
+            "You are a supervisor evaluating a child helpline conversation.\n\n"
+            "Analyze the conversation and provide structured feedback as JSON:\n"
+            "{\n"
+            '  "empathy_score": 1-10,\n'
+            '  "information_gathered": 1-10,\n'
+            '  "safety_assessment": 1-10,\n'
+            '  "strengths": ["list of positive aspects"],\n'
+            '  "improvements": ["list of areas for improvement"],\n'
+            '  "urgent_concerns": ["any immediate safety issues identified"],\n'
+            '  "overall_assessment": "brief summary"\n'
+            "}\n\n"
+            "Focus on:\n"
+            "- How well counselor showed empathy and active listening\n"
+            "- Effectiveness of information gathering\n"
+            "- Safety assessment and risk identification\n"
+            "- Appropriate use of language\n"
+            "- Building trust and rapport"
         )
         
-        api_messages = [{"role": "user", "content": full_text}]
-        
+        api_messages = [{
+            "role": "user",
+            "content": f"Analyze this conversation:\n{conversation_text}"
+        }]
+
         try:
             response = await self._make_request(
-                api_messages, 
-                system_prompt, 
+                api_messages,
+                system_prompt,
                 temperature=0.2,
                 max_tokens=800
             )
             json_str = self._clean_json_response(response)
-            metadata = json.loads(json_str)
-            logger.info(f"Extracted conversation metadata: {json.dumps(metadata, indent=2)}")
-            return metadata
+            return json.loads(json_str)
         except Exception as e:
-            logger.error(f"Failed to extract metadata: {e}", exc_info=True)
-            return {}
+            logger.error(f"Quality analysis failed: {e}", exc_info=True)
+            return {
+                "error": "Analysis unavailable",
+                "overall_assessment": "Unable to analyze conversation quality"
+            }
 
 
 # Singleton instance

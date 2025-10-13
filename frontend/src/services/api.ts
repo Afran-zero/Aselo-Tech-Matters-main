@@ -13,7 +13,7 @@ export interface ChildData {
   firstName: string;
   lastName?: string;
   gender?: 'Male' | 'Female' | 'Other' | 'Unknown';
-  age?: string;
+  age?: string[];
   streetAddress?: string;
   parish?: string;
   phone1?: string;
@@ -21,7 +21,7 @@ export interface ChildData {
   nationality?: string;
   schoolName?: string;
   gradeLevel?: string;
-  livingSituation?: string;
+  livingSituation?: string[];
   vulnerableGroups?: string[];
   region?: string;
 }
@@ -46,7 +46,7 @@ export interface SummaryData {
   callSummary: string;
   keepConfidential: boolean;
   locationOfIssue?: string;
-  actionTaken?: string;
+  actionTaken?: string[];
   outcomeOfContact?: string;
   repeatCaller?: boolean | null;
   okForCaseWorkerToCall?: boolean | null;

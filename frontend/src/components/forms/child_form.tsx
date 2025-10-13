@@ -17,7 +17,7 @@ export interface ChildData {
   nationality?: string;
   schoolName?: string;
   gradeLevel?: string;
-  livingSituation?: 'Alternative care' | 'Group residential facility' | 'Homeless or marginally housed' | 'In detention' | 'Living independently' | 'With parent(s)' | 'With relatives' | 'Other' | 'Unknown';
+  livingSituation?: Array<'Alternative care' | 'Group residential facility' | 'Homeless or marginally housed' | 'In detention' | 'Living independently' | 'With parent(s)' | 'With relatives' | 'Other' | 'Unknown' >;
   vulnerableGroups?: Array<'Child in conflict with the law' | 'Child living in conflict zone' | 'Child living in poverty' | 'Child member of an ethnic, racial or religious minority' | 'Child on the move (involuntarily)' | 'Child on the move (voluntarily)' | 'Child with disability' | 'LGBTQI+/SOGIESC child' | 'Out-of-school child' | 'Other'>;
   region?: 'Unknown' | 'Cities' | 'Rural areas' | 'Town & semi-dense areas';
 }

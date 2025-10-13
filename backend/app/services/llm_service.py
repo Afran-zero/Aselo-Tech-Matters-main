@@ -113,19 +113,55 @@ class LLMService:
     ) -> str:
         """Generate empathetic counselor chat response."""
         system_prompt = (
-            "You are a compassionate, professional child helpline counselor.\n\n"
-            "Your approach:\n"
-            "• Listen actively and validate feelings without judgment\n"
-            "• Ask open-ended questions one at a time to understand better\n"
-            "• Build trust gradually - never rush or overwhelm the child\n"
-            "• Use simple, age-appropriate language\n"
-            "• Focus on safety, well-being, and immediate needs\n"
-            "• Show empathy while maintaining professional boundaries\n"
-            "• If harm/abuse mentioned, acknowledge courage and assess safety\n"
-            "• Never make promises you cannot keep\n"
-            "• Keep responses under 3-4 sentences\n\n"
-            "Remember: Your goal is to make the child feel heard, safe, and supported."
-        )
+    "You are a compassionate, professional child helpline counselor and intake assistant.\n\n"
+    "Your mission:\n"
+    "• Make the child feel safe, heard, and supported.\n"
+    "• Gently collect information needed for their case form — without making it feel like an interrogation.\n"
+    "• Ask one open, caring question at a time.\n"
+    "• Use age-appropriate, simple, and warm language.\n"
+    "• Validate their feelings and assure them that sharing helps you understand and support them better.\n"
+    "• Always show empathy, but remain professional and calm.\n"
+    "• Focus on safety, well-being, and comfort while gathering details.\n"
+    "• Keep each response under 3–4 sentences.\n"
+    "• Never rush — build trust gradually.\n"
+    "• If the child mentions harm, abuse, or danger, acknowledge their courage and assess safety first.\n"
+    "• Do not make promises you cannot keep.\n\n"
+    "Your task is to ask about the following form details naturally, in the flow of conversation:\n"
+    "— Child Information —\n"
+    "1. First Name\n"
+    "2. Last Name\n"
+    "3. Gender\n"
+    "4. Age\n"
+    "5. Street Address\n"
+    "6. Parish\n"
+    "7. Phone #1\n"
+    "8. Phone #2\n"
+    "9. Nationality\n"
+    "10. School Name\n"
+    "11. Grade Level\n"
+    "12. Living Situation (e.g., with parents, relatives, foster home)\n"
+    "13. Vulnerable Groups (if applicable)\n"
+    "14. Region\n\n"
+    "— Category Information —\n"
+    "15. Missing Children\n"
+    "16. Violence\n"
+    "17. Trafficking\n"
+    "18. Mental Health\n"
+    "19. Physical Health\n"
+    "20. Accessibility\n"
+    "21. Discrimination and Exclusion\n"
+    "22. Family Relationships\n"
+    "23. Peer Relationships\n"
+    "24. Education and Occupation\n"
+    "25. Sexuality\n"
+    "26. Disability\n"
+    "27. Non-Counselling Contacts\n\n"
+    "Approach:\n"
+    "Start by building trust and comfort. Then, gradually ask for these details when appropriate, using gentle, human-centered questions. "
+    "Avoid sounding like a form or checklist — your tone should feel natural, conversational, and kind."
+)
+
+
 
         conversation_text = self._prepare_conversation_context(messages)
         
@@ -222,8 +258,8 @@ class LLMService:
         # Infer nationality from Jamaican parish
         if not child.get("nationality") and child.get("parish"):
             if child["parish"] in self.VALID_PARISHES and child["parish"] != "Unknown":
-                child["nationality"] = "Jamaican"
-                logger.info("Inferred nationality: Jamaican")
+                child["nationality"] = "Jamaican(Assumed)"
+                logger.info("Inferred nationality: Jamaican ")
         
         # Infer region from parish
         if not child.get("region") and child.get("parish"):
@@ -353,7 +389,7 @@ OUTPUT FORMAT - You MUST output valid JSON with this exact structure:
   "child": {{
     "firstName": "string or null",
     "lastName": "string or null",
-    "gender": "{genders_list}",
+    "gender": "{genders_list} assume gender though name if not stated OR 'Unknown' OR null",
     "age": "format as 2 digits like 01, 05, 14 OR 'Unborn' OR '>25' OR 'Unknown' OR null",
     "streetAddress": "string or null",
     "parish": "{parishes_list}",
@@ -362,22 +398,167 @@ OUTPUT FORMAT - You MUST output valid JSON with this exact structure:
     "nationality": "string or null",
     "schoolName": "string or null",
     "gradeLevel": "string or null",
-    "livingSituation": "{living_situations_list}",
+    "livingSituation": "{living_situations_list} CRITICAL - LIVING SITUATION RULES:You MUST use EXACTLY one of these values - NEVER invent new values or use synonyms
+- "Extended family placement" → USE "With relatives"
+- "Foster care" → USE "Alternative care" 
+- "Living with grandparents/aunts/uncles" → USE "With relatives"
+- If it doesn't match exactly, use "Other" or "Unknown"
     "vulnerableGroups": ["array of strings from valid set"],
     "region": "{regions_list}"
   }},
-  "category": {{
-    "violence": ["specific issues like 'Bullying in school', 'Physical maltreatment/abuse'"],
-    "mental_health": ["specific issues like 'Emotional distress - anxiety problems', 'Stress'"],
-    "family_relationships": ["specific issues like 'Family problems/disputes - conflict between parents/caregivers and child'"],
-    "education_and_occupation": ["specific issues like 'Academic issues', 'Teacher and school problems'"],
-    "peer_relationships": ["specific issues like 'Friends and friendships']
+  "category": { {
+    "missing_children": [
+      "Child abduction",
+      "Lost, unaccounted for or otherwise missing child",
+      "Runaway",
+      "Unspecified/Other"
+    ],
+    "violence": [
+      "Bullying in school",
+      "Bullying out of school",
+      "Child labour (general)",
+      "Child labour (domestic)",
+      "Cyberbullying",
+      "Emotional maltreatment/abuse",
+      "Exposure to criminal violence",
+      "Exposure to domestic violence",
+      "Exposure to pornography",
+      "Gender-based harmful traditional practices (other than FGM)",
+      "Harmful traditional practices other than child marriage and FGM",
+      "Inappropriate sex talk",
+      "Indecent assault",
+      "Neglect (emotional)",
+      "Neglect (education)",
+      "Neglect (health & nutrition)",
+      "Neglect (physical)",
+      "Neglect (or negligent treatment)",
+      "Online child sexual abuse and exploitation",
+      "Physical maltreatment/abuse",
+      "Sexual violence",
+      "Verbal maltreatment/abuse",
+      "Unspecified/Other"
+    ],
+    "trafficking": [
+      "Child begging",
+      "Child used for criminal activity",
+      "Commercial sexual exploitation (offline)",
+      "Commercial sexual exploitation (online)",
+      "Labour exploitation (domestic servitude)"
+    ],
+    "mental_health": [
+      "Addictive behaviours and substance use",
+      "Behavioural problems",
+      "Concerns about the self",
+      "Emotional distress - anger problems",
+      "Emotional distress - fear and anxiety problems",
+      "Emotional distress - mood problems",
+      "Hyperactivity/attention deficit",
+      "Neurodevelopmental concerns",
+      "Problems with eating behaviour",
+      "Self-esteem issues",
+      "Self-harming behaviour",
+      "Sleep disorders",
+      "Stress",
+      "Suicidal thoughts and suicide attempts",
+      "Traumatic distress",
+      "Wellbeing support",
+      "Unspecified/Other"
+    ],
+    "physical_health": [
+      "COVID-19",
+      "General medical or lifestyle concerns",
+      "Medical or lifestyle information about HIV/AIDS",
+      "Pregnancy and maternal care",
+      "Sexual and reproductive health",
+      "Nutrition",
+      "Unspecified/Other"
+    ],
+    "accessibility": [
+      "Career Guidance",
+      "Education",
+      "Essential needs (food, shelter, water, clothing)",
+      "Financial services",
+      "General healthcare services",
+      "Legal services and advice",
+      "Mental health services",
+      "Sexual health services",
+      "Socio-economical services",
+      "Unspecified/Other"
+    ],
+    "discrimination_and_exclusion": [
+      "Ethnicity/nationality",
+      "Financial situation",
+      "Gender",
+      "Gender identity or expression and sexual orientation",
+      "Health",
+      "Philosophical or religious beliefs",
+      "Socio-economic situation",
+      "Street children",
+      "Unspecified/Other"
+    ],
+    "family_relationships": [
+      "Adoption, fostering, and extended family placement",
+      "Child in children's home",
+      "Divorce/separation of parents",
+      "Family health and wellbeing",
+      "Family problems/disputes - conflict between parents/caregivers",
+      "Family problems/disputes - conflict between parents/caregivers and child",
+      "Family problems/disputes - conflict between child and other members of the family",
+      "General family issues",
+      "Grief/bereavement - family",
+      "Left behind children",
+      "Mental health - parental/relative",
+      "Relationship with sibling(s)",
+      "Relationship to caregiver"
+    ],
+    "peer_relationships": [
+      "Friends and friendships",
+      "Grief/bereavement - peers",
+      "Partner relationships",
+      "Classmates/colleagues relationships",
+      "Unspecified/Other"
+    ],
+    "education_and_occupation": [
+      "Academic issues",
+      "Challenges with online schooling",
+      "Child not attending school",
+      "Child truanting from school",
+      "Corporal punishment",
+      "Homework/study tips",
+      "Learning problems",
+      "Performance anxiety",
+      "Problems at work",
+      "Teacher and school problems",
+      "Unspecified/Other"
+    ],
+    "sexuality": [
+      "Sexual orientation and gender identity",
+      "Sexual behaviours",
+      "Unspecified/Other"
+    ],
+    "disability": [
+      "Intellectual disability",
+      "Hearing disability",
+      "Physical disability",
+      "Visual disability"
+    ],
+    "non_counselling_contacts": [
+      "Complaints about the child helpline",
+      "Questions about the child helpline",
+      "Questions about other services",
+      "\"Thank you for your assistance\"",
+      "Unspecified/Other"
+    ]
   }},
   "summary": {{
     "callSummary": "Brief 2-3 sentence summary of main issue and context",
     "keepConfidential": true,
-    "locationOfIssue": "Unknown OR Home (own) OR Home (other) OR Educational Establishment OR Institution OR Online OR Public place OR Other",
-    "actionTaken": "string describing action taken or null",
+    "locationOfIssue": "'Unknown' | 'Home (own)' | 'Home (other)' | 'Educational Establishment' | 'Institution' | 'Online' | 'Public place' | 'Other'",
+    "actionTaken": [
+      Direct interventions by the child helpline' | 'Provision of information about SafeSpot' | 'Recommendations of resources' | 'Recommendation that young person contact SafeSpot' | 'Referrals to child protection agencies' | 'Referrals to law enforcement agencies' | 'Referrals to general healthcare professionals' | 'Referrals to mental health services' | 'Referrals to other organisations' | 'Referrals to school counsellors' | 'Reports to Child Sexual Abuse Material (CSAM) platform' | 'None' | 'Other'
+    ],
+
+
     "outcomeOfContact": "Resolved OR Follow up by next shift OR Follow up with external entity OR null",
     "repeatCaller": true/false/null,
     "okForCaseWorkerToCall": true/false/null,
